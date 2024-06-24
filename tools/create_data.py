@@ -1,9 +1,14 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 import argparse
+import sys
 from os import path as osp
 
 from mmengine import print_log
 
+local_dir = osp.dirname(osp.abspath(__file__))
+sys.path.insert(0, local_dir)
+
+from tools.dataset_converters import cadc_converter as cadc
 from tools.dataset_converters import indoor_converter as indoor
 from tools.dataset_converters import kitti_converter as kitti
 from tools.dataset_converters import lyft_converter as lyft_converter
@@ -264,6 +269,16 @@ def semantickitti_data_prep(info_prefix, out_dir):
     semantickitti_converter.create_semantickitti_info_file(
         info_prefix, out_dir)
 
+def cadc_data_prep(root_path, info_prefix, out_dir):
+    """Prepare the info file for CADC dataset.
+
+    Args:
+        root_path (str): Path of dataset root.
+        info_prefix (str): The prefix of info filenames.
+        out_dir (str): Output directory of the generated info file.
+    """
+    cadc.cadc_converter(root_path, info_prefix, out_dir)
+
 
 parser = argparse.ArgumentParser(description='Data converter arg parser')
 parser.add_argument('dataset', metavar='kitti', help='name of the dataset')
@@ -416,5 +431,11 @@ if __name__ == '__main__':
     elif args.dataset == 'semantickitti':
         semantickitti_data_prep(
             info_prefix=args.extra_tag, out_dir=args.out_dir)
+    elif args.dataset == 'cadc':
+        cadc_data_prep(
+            root_path=args.root_path,
+            info_prefix=args.extra_tag,
+            out_dir=args.out_dir,
+        )
     else:
         raise NotImplementedError(f'Don\'t support {args.dataset} dataset.')
