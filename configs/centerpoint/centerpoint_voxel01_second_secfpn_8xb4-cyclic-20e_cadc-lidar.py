@@ -86,7 +86,7 @@ train_dataloader = dict(
         dataset=dict(
             type=dataset_type,
             data_root=data_root,
-            ann_file='cadc_infos_v2.pkl',
+            ann_file='cadc_train_infos_v2.pkl',
             pipeline=train_pipeline,
             metainfo=dict(classes=class_names),
             test_mode=False,

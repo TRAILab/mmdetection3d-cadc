@@ -269,7 +269,8 @@ def semantickitti_data_prep(info_prefix, out_dir):
     semantickitti_converter.create_semantickitti_info_file(
         info_prefix, out_dir)
 
-def cadc_data_prep(root_path, info_prefix, out_dir):
+
+def cadc_data_prep(root_path, trainval_json: str, info_prefix, out_dir):
     """Prepare the info file for CADC dataset.
 
     Args:
@@ -277,7 +278,7 @@ def cadc_data_prep(root_path, info_prefix, out_dir):
         info_prefix (str): The prefix of info filenames.
         out_dir (str): Output directory of the generated info file.
     """
-    cadc.cadc_converter(root_path, info_prefix, out_dir)
+    cadc.cadc_converter(root_path, trainval_json, info_prefix, out_dir)
 
 
 parser = argparse.ArgumentParser(description='Data converter arg parser')
@@ -327,6 +328,13 @@ parser.add_argument(
     action='store_true',
     help='''Whether to skip saving image and lidar.
         Only used when dataset is Waymo!''')
+parser.add_argument(
+    '--trainval-json',
+    type=str,
+    default='./tools/dataset_converters/cadc_trainval_split_crop.json',
+    help='''Specify the path to a json file for trainval split.
+        Only used when dataset is CADC!'''
+)
 args = parser.parse_args()
 
 if __name__ == '__main__':
@@ -434,6 +442,7 @@ if __name__ == '__main__':
     elif args.dataset == 'cadc':
         cadc_data_prep(
             root_path=args.root_path,
+            trainval_json=args.trainval_json,
             info_prefix=args.extra_tag,
             out_dir=args.out_dir,
         )

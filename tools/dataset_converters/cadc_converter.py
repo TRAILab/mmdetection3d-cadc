@@ -11,10 +11,50 @@ from dataset_converters.update_infos_to_v2 import (
     clear_instance_unused_keys, get_empty_instance,
     get_empty_standard_data_info)
 
+CAMERA_TYPES = [
+    'camera_F',
+    'camera_FR',
+    'camera_RF',
+    'camera_RB',
+    'camera_B',
+    'camera_LB',
+    'camera_LF',
+    'camera_FL',
+]
 
-def cadc_converter(root_path, info_prefix, out_dir):
+# val scenes from
+# https://github.com/mpitropov/OpenPCDet/blob/cadc_support/data/cadc/ImageSets/generate_splits.py
+# val_set = [
+#     ['2018_03_06', '0001'],
+#     ['2018_03_06', '0008'],
+#     ['2018_03_06', '0016'],
+#     ['2018_03_07', '0004'],
+#     ['2019_02_27', '0009'],
+#     ['2019_02_27', '0016'],
+#     ['2019_02_27', '0028'],
+#     ['2019_02_27', '0033'],
+#     ['2019_02_27', '0040'],
+#     ['2019_02_27', '0043'],
+#     ['2019_02_27', '0054'],
+#     ['2019_02_27', '0060'],
+#     ['2019_02_27', '0065'],
+#     ['2019_02_27', '0076'],
+# ]
+
+
+def cadc_converter(root_path, trainval_json: str, info_prefix, out_dir):
     # TODO support camera data, currently only support lidar data
-    infos = []
+    # read trainval json
+    with open(trainval_json, 'r') as f:
+        trainval_split = json.load(f)
+    trainval_split = {x['seq']: x['split']
+                      for x in trainval_split if 'cam0' in x['seq']}
+    # drop the camera directory to just keep the splits
+    # also only take based on cam0 splits
+    trainval_split = {os.path.dirname(k): v for k, v in trainval_split.items()}
+    all_infos = []
+    train_infos = []
+    val_infos = []
     for date in os.listdir(root_path):
         date_path = os.path.join(root_path, date)
         if not os.path.isdir(date_path):
@@ -31,7 +71,8 @@ def cadc_converter(root_path, info_prefix, out_dir):
                     calib_dict['extrinsics'] = yaml.safe_load(f)
             else:
                 with open(calib_file_path, 'r') as f:
-                    calib_dict[f"intrinsics_{calib_file.split('.')[0]}"] = yaml.safe_load(f)
+                    calib_dict[f"intrinsics_{calib_file.split('.')[0]}"] = yaml.safe_load(
+                        f)
 
         for seq in os.listdir(date_path):
             if seq == 'calib':
@@ -47,39 +88,53 @@ def cadc_converter(root_path, info_prefix, out_dir):
                 novatel_timestamps = f.readlines()
             for i, (ann, lidar_ts, novatel_ts) in enumerate(zip(ann_seq, lidar_timestamps, novatel_timestamps)):
                 ann['calib_dict'] = calib_dict
-                ann['lidar_path'] = os.path.join(date, seq, 'labeled', 'lidar_points', 'data', str(i).zfill(10)+'.bin')
+                ann['lidar_path'] = os.path.join(
+                    date, seq, 'labeled', 'lidar_points', 'data', str(i).zfill(10)+'.bin')
                 if not os.path.exists(os.path.join(root_path, ann['lidar_path'])):
-                    print(f"WARNING: lidar path {ann['lidar_path']} does not exist")
+                    print(
+                        f"WARNING: lidar path {ann['lidar_path']} does not exist")
                 ann['date'] = date
                 ann['seq'] = seq
                 ann['frame_idx'] = i
                 # load novatel message
-                novatel_path = os.path.join(seq_path, 'labeled', 'novatel', 'data', str(i).zfill(10)+'.txt')
+                novatel_path = os.path.join(
+                    seq_path, 'labeled', 'novatel', 'data', str(i).zfill(10)+'.txt')
                 with open(novatel_path, 'r') as f:
                     novatel_data = f.readline().split(' ')
                 if origin is None:
-                    origin = utm.from_latlon(float(novatel_data[0]), float(novatel_data[1]))
-                    origin = [origin[0], origin[1], float(novatel_data[2]) + float(novatel_data[3])]
+                    origin = utm.from_latlon(
+                        float(novatel_data[0]), float(novatel_data[1]))
+                    origin = [origin[0], origin[1], float(
+                        novatel_data[2]) + float(novatel_data[3])]
                 ann['pose'] = novatel2pose(novatel_data, origin)
                 # drop last 3 digits, datetime only supports microsecond precision, and the \n char
-                ann['lidar_timestamp'] = datetime.strptime(lidar_ts[:-4], "%Y-%m-%d %H:%M:%S.%f")
-                ann['novatel_timestamp'] = datetime.strptime(novatel_ts[:-4], "%Y-%m-%d %H:%M:%S.%f")
-                infos.append(ann)
+                ann['lidar_timestamp'] = datetime.strptime(
+                    lidar_ts[:-4], "%Y-%m-%d %H:%M:%S.%f")
+                ann['novatel_timestamp'] = datetime.strptime(
+                    novatel_ts[:-4], "%Y-%m-%d %H:%M:%S.%f")
+                all_infos.append(ann)
+                if trainval_split[os.path.join(date, seq)] == 'train':
+                    train_infos.append(ann)
+                elif trainval_split[os.path.join(date, seq)] == 'val':
+                    val_infos.append(ann)
+                else:
+                    print(
+                        f"{os.path.join(date, seq)} was not found in the trainval_json. Not including in pkls")
     # update ann infos to v2
+    # TODO remove redundant processing from doing the split before the final conversion
+    generate_v2_pkl(info_prefix+'_all', out_dir, all_infos)
+    generate_v2_pkl(info_prefix+'_train', out_dir, train_infos)
+    generate_v2_pkl(info_prefix+'_val', out_dir, val_infos)
+
+
+def generate_v2_pkl(info_prefix, out_dir, infos):
     converted_list = []
-    camera_types = [
-        'camera_F',
-        'camera_FR',
-        'camera_RF',
-        'camera_RB',
-        'camera_B',
-        'camera_LB',
-        'camera_LF',
-        'camera_FL',
-    ]
     for i, ori_info_dict in enumerate(mmengine.track_iter_progress(infos)):
-        temp_data_info = get_empty_standard_data_info(camera_types=camera_types)
+        temp_data_info = get_empty_standard_data_info(
+            camera_types=CAMERA_TYPES)
         temp_data_info['sample_idx'] = i
+        temp_data_info['token'] = os.path.join(
+            ori_info_dict['date'], ori_info_dict['seq'])
         temp_data_info['timestamp_s'] = ori_info_dict['lidar_timestamp'].timestamp()
         temp_data_info['ego2global'] = ori_info_dict['pose']
         temp_data_info['lidar_points']['lidar2ego'] = ori_info_dict['calib_dict']['extrinsics']['T_LIDAR_GPSIMU']
@@ -111,32 +166,33 @@ def cadc_converter(root_path, info_prefix, out_dir):
         converted_list.append(temp_data_info)
     metainfo = dict()
     metainfo['dataset'] = 'cadc'
-    metainfo['version'] = 'full' # all 3 scenes, no train/val split
+    metainfo['version'] = 'full'  # all 3 scenes, no train/val split
     metainfo['info_version'] = '2.0'
     converted_data_info = dict(metainfo=metainfo, data_list=converted_list)
-    mmengine.dump(converted_data_info, os.path.join(out_dir, f'{info_prefix}_infos_v2.pkl'))
+    mmengine.dump(converted_data_info, os.path.join(
+        out_dir, f'{info_prefix}_infos_v2.pkl'))
 
 
 def novatel2pose(gps_msg, origin):
     # utm_data[0] = East (m), utm_data[1] = North (m)
-    utm_data = utm.from_latlon(float(gps_msg[0]), float(gps_msg[1]));
+    utm_data = utm.from_latlon(float(gps_msg[0]), float(gps_msg[1]))
     # Ellipsoidal height = MSL (orthometric) + undulation
-    ellipsoidal_height = float(gps_msg[2]) + float(gps_msg[3]);
+    ellipsoidal_height = float(gps_msg[2]) + float(gps_msg[3])
 
-    roll = np.deg2rad(float(gps_msg[7]));
-    pitch = np.deg2rad(float(gps_msg[8]));
+    roll = np.deg2rad(float(gps_msg[7]))
+    pitch = np.deg2rad(float(gps_msg[8]))
 
     # Azimuth = north at 0 degrees, east at 90 degrees, south at 180 degrees and west at 270 degrees
-    azimuth = float(gps_msg[9]);
+    azimuth = float(gps_msg[9])
     # yaw = north at 0 deg, 90 at west and 180 at south, east at 270 deg
-    yaw = np.deg2rad(-1.0 * azimuth); 
+    yaw = np.deg2rad(-1.0 * azimuth)
 
-    c_phi = math.cos(roll);
-    s_phi = math.sin(roll);
-    c_theta = math.cos(pitch);
-    s_theta = math.sin(pitch);
-    c_psi = math.cos(yaw);
-    s_psi = math.sin(yaw);
+    c_phi = math.cos(roll)
+    s_phi = math.sin(roll)
+    c_theta = math.cos(pitch)
+    s_theta = math.sin(pitch)
+    c_psi = math.cos(yaw)
+    s_psi = math.sin(yaw)
 
     # This is the T_locallevel_body transform where ENU is the local level frame
     # and the imu is the body frame
@@ -160,4 +216,4 @@ def novatel2pose(gps_msg, origin):
     pose[2, 2] = c_theta * c_phi
     pose[2, 3] = ellipsoidal_height - origin[2]
 
-    return pose;
+    return pose
