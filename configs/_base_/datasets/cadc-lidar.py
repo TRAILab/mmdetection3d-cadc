@@ -104,8 +104,8 @@ train_dataloader = dict(
         box_type_3d='LiDAR',
         backend_args=backend_args))
 test_dataloader = dict(
-    batch_size=1,
-    num_workers=1,
+    batch_size=4,
+    num_workers=4,
     persistent_workers=True,
     drop_last=False,
     sampler=dict(type='DefaultSampler', shuffle=False),
@@ -120,8 +120,8 @@ test_dataloader = dict(
         box_type_3d='LiDAR',
         backend_args=backend_args))
 val_dataloader = dict(
-    batch_size=1,
-    num_workers=1,
+    batch_size=4,
+    num_workers=4,
     persistent_workers=True,
     drop_last=False,
     sampler=dict(type='DefaultSampler', shuffle=False),
@@ -143,7 +143,7 @@ val_evaluator = dict(
     classes=class_names,
     modality=input_modality,
     backend_args=backend_args,
-    format_only=True,
+    format_only=False,
     jsonfile_prefix='work-dir/cadc_val',)
 test_evaluator = val_evaluator
 

@@ -41,6 +41,8 @@ CAMERA_TYPES = [
 #     ['2019_02_27', '0076'],
 # ]
 
+# bugged scenes
+# ['2019_02_27', '0004'] # gt appears to have some rotational offset
 
 def cadc_converter(root_path, trainval_json: str, info_prefix, out_dir):
     # TODO support camera data, currently only support lidar data
