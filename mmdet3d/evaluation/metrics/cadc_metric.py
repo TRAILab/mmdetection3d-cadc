@@ -63,7 +63,8 @@ class CADCMetric(BaseMetric):
             backend_args: Optional[dict] = None,
             config_name: str = 'detection_cadc',
             collect_device: str = 'cpu',
-            prefix: Optional[str] = None):
+            prefix: Optional[str] = None,
+            verbose: bool = False,):
         super().__init__(collect_device=collect_device, prefix=prefix)
         self.ann_file = ann_file
         self.data_root = data_root
@@ -85,6 +86,7 @@ class CADCMetric(BaseMetric):
         with open(cfg_path, 'r') as f:
             data = json.load(f)
         self.eval_det_config = CADCDetectionConfig.deserialize(data)
+        self.verbose = verbose
 
     def process(self, data_batch: dict, data_samples: Sequence[dict]) -> None:
         """Process one batch of data samples and predictions.
@@ -196,7 +198,7 @@ class CADCMetric(BaseMetric):
             gt_infos=self.data_infos,
             result_path=result_path,
             output_dir=output_dir,
-            verbose=False,
+            verbose=self.verbose,
             logger=logger)
         cadc_eval.main(render_curves=False)
 
@@ -303,7 +305,8 @@ class CADCMetric(BaseMetric):
                     translation=box.center.tolist(),
                     size=box.wlh.tolist(),
                     rotation=box.orientation.elements.tolist(),
-                    ego_translation=det['bboxes_3d'][i].gravity_center.numpy().reshape(3).tolist(),
+                    ego_translation=det['bboxes_3d'][i].gravity_center.numpy().reshape(
+                        3).tolist(),
                     velocity=box.velocity[:2].tolist(),
                     detection_name=name,
                     detection_score=box.score,
@@ -412,6 +415,7 @@ class CADCDetectionConfig(DetectionConfig):
 
         self.class_names = self.class_range.keys()
 
+
 class CADCDetectionBox(DetectionBox):
     def __init__(
             self,
@@ -420,24 +424,31 @@ class CADCDetectionBox(DetectionBox):
             size: Tuple[float, float, float] = (0, 0, 0),
             rotation: Tuple[float, float, float, float] = (0, 0, 0, 0),
             velocity: Tuple[float, float] = (0, 0),
-            ego_translation: Tuple[float, float, float] = (0, 0, 0),  # Translation to ego vehicle in meters.
-            num_pts: int = -1,  # Nbr. LIDAR or RADAR inside the box. Only for gt boxes.
-            detection_name: str = 'car',  # The class name used in the detection challenge.
+            # Translation to ego vehicle in meters.
+            ego_translation: Tuple[float, float, float] = (0, 0, 0),
+            # Nbr. LIDAR or RADAR inside the box. Only for gt boxes.
+            num_pts: int = -1,
+            # The class name used in the detection challenge.
+            detection_name: str = 'car',
             detection_score: float = -1.0,  # GT samples do not have a score.
             attribute_name: str = ''):  # Box attribute. Each box can have at most 1 attribute.
 
-        super().__init__(sample_token, translation, size, rotation, velocity, ego_translation, num_pts)
+        super().__init__(sample_token, translation, size,
+                         rotation, velocity, ego_translation, num_pts)
 
         assert detection_name is not None, 'Error: detection_name cannot be empty!'
         # no longer check if detection_name is in nuscenes detection names
 
-        assert type(detection_score) == float, 'Error: detection_score must be a float!'
-        assert not np.any(np.isnan(detection_score)), 'Error: detection_score may not be NaN!'
+        assert type(
+            detection_score) == float, 'Error: detection_score must be a float!'
+        assert not np.any(np.isnan(detection_score)
+                          ), 'Error: detection_score may not be NaN!'
 
         # Assign.
         self.detection_name = detection_name
         self.detection_score = detection_score
         self.attribute_name = attribute_name
+
 
 def lidar_box_to_global(
         info: dict, boxes: List[NuScenesBox]) -> List[NuScenesBox]:
@@ -527,9 +538,8 @@ def load_gt(gt_infos, box_cls, verbose: bool = False, logger: Optional[MMLogger]
                         num_pts=instance['num_lidar_pts'],
                         detection_name=detection_name,
                         # GT samples do not have a score.
-                        # detection_score=-1.0,
-                        detection_score=1.0,
-
+                        detection_score=-1.0,
+                        # detection_score=1.0,
                     )
                 )
             elif box_cls == TrackingBox:

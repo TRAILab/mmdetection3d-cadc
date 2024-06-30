@@ -135,8 +135,10 @@ def generate_v2_pkl(info_prefix, out_dir, infos):
         temp_data_info = get_empty_standard_data_info(
             camera_types=CAMERA_TYPES)
         temp_data_info['sample_idx'] = i
-        temp_data_info['token'] = os.path.join(
+        temp_data_info['scene_token'] = os.path.join(
             ori_info_dict['date'], ori_info_dict['seq'])
+        temp_data_info['token'] = os.path.join(
+            ori_info_dict['date'], ori_info_dict['seq'], str(ori_info_dict['frame_idx']).zfill(10))
         temp_data_info['timestamp_s'] = ori_info_dict['lidar_timestamp'].timestamp()
         temp_data_info['ego2global'] = ori_info_dict['pose']
         temp_data_info['lidar_points']['lidar2ego'] = ori_info_dict['calib_dict']['extrinsics']['T_LIDAR_GPSIMU']
