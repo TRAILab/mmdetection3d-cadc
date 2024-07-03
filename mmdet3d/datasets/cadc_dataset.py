@@ -15,17 +15,17 @@ class CADCDataset(Det3DDataset):
     # replace with all the classes in customized pkl info file
     METAINFO = {
         'classes': (
-            'Car', 
-            'Pedestrian', 
-            'Truck', 
-            'Bus', 
-            'Garbage_Containers_on_Wheels', 
+            'Car',
+            'Pedestrian',
+            'Truck',
+            'Bus',
+            'Garbage_Containers_on_Wheels',
             'Traffic_Guidance_Objects',
             'Bicycle',
-            'Pedestrian_With_Object', 
+            'Pedestrian_With_Object',
             'Horse_and_Buggy',
             'Animals'
-            ),
+        ),
     }
 
     def __init__(self,
@@ -35,8 +35,8 @@ class CADCDataset(Det3DDataset):
                  data_prefix: dict = dict(pts='', img=''),
                  pipeline: List[Union[dict, Callable]] = [],
                  modality: dict = dict(use_lidar=True, use_camera=False),
-                 default_cam_key: str = None,
-                 box_type_3d: dict = 'LiDAR',
+                 box_type_3d: str = 'LiDAR',
+                 with_velocity: bool = False,
                  filter_empty_gt: bool = True,
                  test_mode: bool = False,
                  load_eval_anns: bool = True,
@@ -55,12 +55,12 @@ class CADCDataset(Det3DDataset):
             if key not in modality:
                 modality[key] = False
         self.modality = modality
-        self.default_cam_key = default_cam_key
         assert self.modality['use_lidar'] or self.modality['use_camera'], (
             'Please specify the `modality` (`use_lidar` '
             f', `use_camera`) for {self.__class__.__name__}')
 
         self.box_type_3d, self.box_mode_3d = get_box_type(box_type_3d)
+        self.with_velocity = with_velocity
 
         if metainfo is not None and 'classes' in metainfo:
             # we allow to train on subset of self.METAINFO['classes']
@@ -72,7 +72,8 @@ class CADCDataset(Det3DDataset):
             self.label_mapping[-1] = -1
             curr_label = 0
             for label_idx, name in enumerate(metainfo['classes']):
-                assert name in self.METAINFO['classes'], f'Class name {name} not in possible classes: {self.METAINFO["classes"]}'
+                assert name in self.METAINFO[
+                    'classes'], f'Class name {name} not in possible classes: {self.METAINFO["classes"]}'
                 self.label_mapping[name] = curr_label
                 curr_label += 1
 
@@ -133,11 +134,20 @@ class CADCDataset(Det3DDataset):
         if ann_info is None:
             ann_info = dict()
             # empty instance
-            ann_info['gt_bboxes_3d'] = np.zeros((0, 7), dtype=np.float32)
+            if self.with_velocity:
+                ann_info['gt_bboxes_3d'] = np.zeros((0, 9), dtype=np.float32)
+            else:
+                ann_info['gt_bboxes_3d'] = np.zeros((0, 7), dtype=np.float32)
             ann_info['gt_labels_3d'] = np.zeros(0, dtype=np.int64)
 
         # filter the gt classes not used in training
         ann_info = self._remove_dontcare(ann_info)
-        gt_bboxes_3d = LiDARInstance3DBoxes(ann_info['gt_bboxes_3d'], origin=(0.5, 0.5, 0.5))
-        ann_info['gt_bboxes_3d'] = gt_bboxes_3d
+        gt_bboxes_3d = ann_info['gt_bboxes_3d']
+        if self.with_velocity:
+            gt_velocities = ann_info['velocities']
+            nan_mask = np.isnan(gt_velocities[:, 0])
+            gt_velocities[nan_mask] = [0.0, 0.0]
+            gt_bboxes_3d = np.concatenate([gt_bboxes_3d, gt_velocities], axis=-1)
+        ann_info['gt_bboxes_3d'] = LiDARInstance3DBoxes(
+            gt_bboxes_3d, box_dim=gt_bboxes_3d.shape[-1], origin=(0.5, 0.5, 0.5))
         return ann_info

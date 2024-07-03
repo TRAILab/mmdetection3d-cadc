@@ -318,6 +318,17 @@ class Det3DLocalVisualizer(DetLocalVisualizer):
             # draw bboxes on visualizer
             self.o3d_vis.add_geometry(line_set)
 
+            # draw velocity vector on visualizer
+            vel = bboxes_3d[i, 7:9] * 1
+            vel = np.array([vel[0], vel[1], 0])
+            vel_line = geometry.LineSet(
+                points=o3d.utility.Vector3dVector([center, center + vel]),
+                # points=o3d.utility.Vector3dVector([[1, 1, 0], [10, 10, 0]]),
+                lines=o3d.utility.Vector2iVector([[0, 1]]),
+            )
+            vel_line.paint_uniform_color(np.array(bbox_color[i]) / 255.)
+            self.o3d_vis.add_geometry(vel_line)
+
             # change the color of points which are in box
             if self.pcd is not None and mode == 'xyz':
                 indices = box3d.get_point_indices_within_bounding_box(
@@ -646,7 +657,6 @@ class Det3DLocalVisualizer(DetLocalVisualizer):
                 points, bboxes_3d_depth = to_depth_mode(points, bboxes_3d)
             else:
                 bboxes_3d_depth = bboxes_3d.clone()
-
             if 'axis_align_matrix' in input_meta:
                 points = DepthPoints(points, points_dim=points.shape[1])
                 rot_mat = input_meta['axis_align_matrix'][:3, :3]

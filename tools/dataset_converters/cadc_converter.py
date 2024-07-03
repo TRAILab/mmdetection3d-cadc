@@ -1,7 +1,7 @@
 import json
 import math
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 
 import mmengine
 import numpy as np
@@ -44,6 +44,7 @@ CAMERA_TYPES = [
 # bugged scenes
 # ['2019_02_27', '0004'] # gt appears to have some rotational offset
 
+
 def cadc_converter(root_path, trainval_json: str, info_prefix, out_dir):
     # TODO support camera data, currently only support lidar data
     # read trainval json
@@ -57,6 +58,8 @@ def cadc_converter(root_path, trainval_json: str, info_prefix, out_dir):
     all_infos = []
     train_infos = []
     val_infos = []
+    obj_db = {}
+    # iterate through each date
     for date in os.listdir(root_path):
         date_path = os.path.join(root_path, date)
         if not os.path.isdir(date_path):
@@ -75,7 +78,7 @@ def cadc_converter(root_path, trainval_json: str, info_prefix, out_dir):
                 with open(calib_file_path, 'r') as f:
                     calib_dict[f"intrinsics_{calib_file.split('.')[0]}"] = yaml.safe_load(
                         f)
-
+        # iterate through each clip in the date
         for seq in os.listdir(date_path):
             if seq == 'calib':
                 continue
@@ -88,6 +91,7 @@ def cadc_converter(root_path, trainval_json: str, info_prefix, out_dir):
                 lidar_timestamps = f.readlines()
             with open(os.path.join(seq_path, 'labeled/novatel/timestamps.txt'), 'r') as f:
                 novatel_timestamps = f.readlines()
+            # iterate through each frame in the clip
             for i, (ann, lidar_ts, novatel_ts) in enumerate(zip(ann_seq, lidar_timestamps, novatel_timestamps)):
                 ann['calib_dict'] = calib_dict
                 ann['lidar_path'] = os.path.join(
@@ -108,12 +112,35 @@ def cadc_converter(root_path, trainval_json: str, info_prefix, out_dir):
                         float(novatel_data[0]), float(novatel_data[1]))
                     origin = [origin[0], origin[1], float(
                         novatel_data[2]) + float(novatel_data[3])]
-                ann['pose'] = novatel2pose(novatel_data, origin)
                 # drop last 3 digits, datetime only supports microsecond precision, and the \n char
                 ann['lidar_timestamp'] = datetime.strptime(
                     lidar_ts[:-4], "%Y-%m-%d %H:%M:%S.%f")
                 ann['novatel_timestamp'] = datetime.strptime(
                     novatel_ts[:-4], "%Y-%m-%d %H:%M:%S.%f")
+                t_lidar_imu = np.array(
+                    calib_dict['extrinsics']['T_LIDAR_GPSIMU'])
+                t_imu_lidar = np.linalg.inv(t_lidar_imu)
+                t_global_imu = novatel2pose(novatel_data, origin)
+                ann['pose'] = t_global_imu
+                t_global_lidar = np.dot(t_global_imu, t_imu_lidar)
+                # extract velocity from pose info
+                for obj in ann['cuboids']:
+                    if obj['uuid'] not in obj_db:
+                        # initialize entry in obj_db
+                        obj_db[obj['uuid']] = {
+                            'poses': np.empty((len(ann_seq), 3)),
+                            'visible': np.zeros(len(ann_seq), dtype=bool),
+                            'timestamps': np.empty(len(ann_seq), dtype=object)
+                        }
+                        obj_db[obj['uuid']]['poses'].fill(np.nan)
+                        obj_db[obj['uuid']]['timestamps'].fill(np.nan)
+                    # transform position to global frame
+                    pos = [obj['position']['x'], obj['position']
+                           ['y'], obj['position']['z']]
+                    obj_db[obj['uuid']]['poses'][i] = np.dot(
+                        t_global_lidar[:3, :3], pos) + t_global_lidar[:3, 3]
+                    obj_db[obj['uuid']]['visible'][i] = True
+                    obj_db[obj['uuid']]['timestamps'][i] = ann['lidar_timestamp']
                 all_infos.append(ann)
                 if trainval_split[os.path.join(date, seq)] == 'train':
                     train_infos.append(ann)
@@ -122,14 +149,19 @@ def cadc_converter(root_path, trainval_json: str, info_prefix, out_dir):
                 else:
                     print(
                         f"{os.path.join(date, seq)} was not found in the trainval_json. Not including in pkls")
+    print("Finished processing all dates. Generating velocities")
+    # generate velocities in global space
+    for obj_uuid, obj_db_single in obj_db.items():
+        obj_db[obj_uuid]['velocity'] = box_velocity(obj_db_single)
     # update ann infos to v2
     # TODO remove redundant processing from doing the split before the final conversion
-    generate_v2_pkl(info_prefix+'_all', out_dir, all_infos)
-    generate_v2_pkl(info_prefix+'_train', out_dir, train_infos)
-    generate_v2_pkl(info_prefix+'_val', out_dir, val_infos)
+    print("begin final conversion")
+    generate_v2_pkl(info_prefix+'_all', out_dir, all_infos, obj_db)
+    generate_v2_pkl(info_prefix+'_train', out_dir, train_infos, obj_db)
+    generate_v2_pkl(info_prefix+'_val', out_dir, val_infos, obj_db)
 
 
-def generate_v2_pkl(info_prefix, out_dir, infos):
+def generate_v2_pkl(info_prefix, out_dir, infos, obj_db):
     converted_list = []
     for i, ori_info_dict in enumerate(mmengine.track_iter_progress(infos)):
         temp_data_info = get_empty_standard_data_info(
@@ -145,7 +177,7 @@ def generate_v2_pkl(info_prefix, out_dir, infos):
         temp_data_info['lidar_points']['lidar_path'] = ori_info_dict['lidar_path']
         temp_data_info['lidar_points']['num_pts_feats'] = 4
         # gt box infos
-        for i, gt_dict in enumerate(ori_info_dict['cuboids']):
+        for _, gt_dict in enumerate(ori_info_dict['cuboids']):
             empty_instance = get_empty_instance()
             # bbox_3d x y z l w h yaw
             # switch the dimensions x and y.
@@ -160,6 +192,16 @@ def generate_v2_pkl(info_prefix, out_dir, infos):
                 gt_dict['dimensions']['z'],
                 gt_dict['yaw']
             ]
+            # velocity
+            global_vel = obj_db[gt_dict['uuid']
+                                ]['velocity'][ori_info_dict['frame_idx']]
+            # transform velocity to ego frame
+            t_global_imu = ori_info_dict['pose']
+            t_imu_global = np.linalg.inv(t_global_imu)
+            t_lidar_global = ori_info_dict['calib_dict']['extrinsics']['T_LIDAR_GPSIMU'] @ t_imu_global
+            ego_vel = np.dot(t_lidar_global[:3, :3], global_vel)
+            empty_instance['velocity'] = ego_vel[:2]
+
             # label
             empty_instance['bbox_label_3d'] = gt_dict['label']
             empty_instance['num_lidar_pts'] = gt_dict['points_count']
@@ -173,8 +215,9 @@ def generate_v2_pkl(info_prefix, out_dir, infos):
     metainfo['version'] = 'full'  # all 3 scenes, no train/val split
     metainfo['info_version'] = '2.0'
     converted_data_info = dict(metainfo=metainfo, data_list=converted_list)
-    mmengine.dump(converted_data_info, os.path.join(
-        out_dir, f'{info_prefix}_infos_v2.pkl'))
+    save_path = os.path.join(out_dir, f'{info_prefix}_infos_v2.pkl')
+    mmengine.dump(converted_data_info, save_path)
+    print("Finished converting to v2. Saved to ", save_path)
 
 
 def novatel2pose(gps_msg, origin):
@@ -221,3 +264,46 @@ def novatel2pose(gps_msg, origin):
     pose[2, 3] = ellipsoidal_height - origin[2]
 
     return pose
+
+
+def box_velocity(obj_db_single, max_time_diff: float = 1.5) -> np.ndarray:
+    """
+    Estimate the velocity for an annotation.
+    If possible, we compute the centered difference between the previous and next frame.
+    Otherwise we use the difference between the current and previous/next frame.
+    If the velocity cannot be estimated, values are set to np.nan.
+    :param sample_annotation_token: Unique sample_annotation identifier.
+    :param max_time_diff: Max allowed time diff between consecutive samples that are used to estimate velocities.
+    :return: <np.float: 3>. Velocity in x/y/z direction in m/s.
+    """
+    n = len(obj_db_single['visible'])
+    ret = np.zeros((n, 3))
+    ret.fill(np.nan)
+    # only a single annotation, cannot compute velocity
+    if obj_db_single['visible'].sum() == 1:
+        return ret
+    prevs = np.where(obj_db_single['visible'])[0][:-1]
+    # first element has no prev, so it is its own prev
+    prevs = np.insert(prevs, 0, prevs[0])
+    nexts = np.where(obj_db_single['visible'])[0][1:]
+    # last element has no next, so it is its own next
+    nexts = np.append(nexts, nexts[-1])
+    max_time_diff_td = timedelta(seconds=max_time_diff)
+    for i, (prev, next) in enumerate(zip(prevs, nexts)):
+        if not obj_db_single['visible'][i]:
+            continue
+        ts_next = obj_db_single['timestamps'][next]
+        ts_prev = obj_db_single['timestamps'][prev]
+        ts_curr = obj_db_single['timestamps'][i]
+        if ts_next - ts_curr > max_time_diff_td:
+            next = i
+        if ts_curr - ts_prev > max_time_diff_td:
+            prev = i
+        if next == prev:
+            continue
+
+        ret[i] = (obj_db_single['poses'][next] - obj_db_single['poses'][prev]) / \
+            ((obj_db_single['timestamps'][next] -
+             obj_db_single['timestamps'][prev]).microseconds / 1e6)
+
+    return ret

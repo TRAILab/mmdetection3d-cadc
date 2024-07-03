@@ -89,9 +89,9 @@ train_dataloader = dict(
             ann_file='cadc_train_infos_v2.pkl',
             pipeline=train_pipeline,
             metainfo=dict(classes=class_names),
+            modality=dict(use_lidar=True, use_camera=False),
+            with_velocity=True,
             test_mode=False,
-            data_prefix=data_prefix,
-            use_valid_flag=True,
             # we use box_type_3d='LiDAR' in kitti and nuscenes dataset
             # and box_type_3d='Depth' in sunrgbd and scannet dataset.
             box_type_3d='LiDAR',

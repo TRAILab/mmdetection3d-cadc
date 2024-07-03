@@ -14,8 +14,8 @@ class_names = [
     'Traffic_Guidance_Objects',
     'Bicycle',
     'Pedestrian_With_Object', 
-    'Horse_and_Buggy',
-    'Animals'
+    # 'Horse_and_Buggy',
+    # 'Animals'
 ]
 metainfo = dict(classes=class_names)
 dataset_type = 'CADCDataset'
@@ -98,6 +98,7 @@ train_dataloader = dict(
         pipeline=train_pipeline,
         metainfo=metainfo,
         modality=input_modality,
+        with_velocity=True,
         test_mode=False,
         # we use box_type_3d='LiDAR' in kitti and nuscenes dataset
         # and box_type_3d='Depth' in sunrgbd and scannet dataset.
@@ -116,6 +117,7 @@ test_dataloader = dict(
         pipeline=test_pipeline,
         metainfo=metainfo,
         modality=input_modality,
+        with_velocity=True,
         test_mode=False,
         box_type_3d='LiDAR',
         backend_args=backend_args))
@@ -132,6 +134,7 @@ val_dataloader = dict(
         pipeline=test_pipeline,
         metainfo=metainfo,
         modality=input_modality,
+        with_velocity=True,
         test_mode=False,
         box_type_3d='LiDAR',
         backend_args=backend_args))
@@ -144,7 +147,8 @@ val_evaluator = dict(
     modality=input_modality,
     backend_args=backend_args,
     format_only=False,
-    jsonfile_prefix='work-dir/cadc_val',)
+    jsonfile_prefix='work-dir/cadc_val',
+    verbose=True,)
 test_evaluator = val_evaluator
 
 vis_backends = [dict(type='LocalVisBackend')]
