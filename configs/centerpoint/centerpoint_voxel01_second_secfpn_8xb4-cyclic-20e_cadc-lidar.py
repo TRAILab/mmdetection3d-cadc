@@ -13,15 +13,15 @@ point_cloud_range = [-51.2, -51.2, -5.0, 51.2, 51.2, 3.0]
 # For nuScenes we usually do 10-class detection
 class_names = [
     'Car', 
-    'Pedestrian', 
     'Truck', 
-    'Bus', 
-    'Garbage_Containers_on_Wheels', 
+    'Bus',  
     'Traffic_Guidance_Objects',
     'Bicycle',
+    'Pedestrian', 
     'Pedestrian_With_Object', 
-    'Horse_and_Buggy',
-    'Animals'
+    'Garbage_Containers_on_Wheels', 
+    # 'Horse_and_Buggy',
+    # 'Animals'
 ]
 data_prefix = dict(pts='', img='', sweeps='')
 model = dict(
@@ -29,7 +29,17 @@ model = dict(
         voxel_layer=dict(point_cloud_range=point_cloud_range)),
     pts_voxel_encoder=dict(num_features=4),
     pts_middle_encoder=dict(in_channels=4),
-    pts_bbox_head=dict(bbox_coder=dict(pc_range=point_cloud_range[:2])),
+    pts_bbox_head=dict(
+        bbox_coder=dict(pc_range=point_cloud_range[:2]),
+        tasks=[
+            dict(num_class=1, class_names=['Car']),
+            dict(num_class=1, class_names=['Truck']),
+            dict(num_class=1, class_names=['Bus']),
+            dict(num_class=1, class_names=['Traffic_Guidance_Objects']),
+            dict(num_class=1, class_names=['Bicycle']),
+            dict(num_class=3, class_names=[
+                 'Pedestrian', 'Pedestrian_With_Object', 'Garbage_Containers_on_Wheels']),
+        ]),
     # model training and testing settings
     train_cfg=dict(pts=dict(point_cloud_range=point_cloud_range)),
     test_cfg=dict(pts=dict(pc_range=point_cloud_range[:2])))
@@ -92,7 +102,8 @@ test_pipeline = [
         backend_args=backend_args),
     dict(type='LoadAnnotations3D', with_bbox_3d=True, with_label_3d=True),
     dict(type='ObjectNameFilter', classes=class_names),
-    dict(type='Pack3DDetInputs', keys=['points', 'gt_bboxes_3d', 'gt_labels_3d'])
+    dict(type='Pack3DDetInputs', keys=[
+         'points', 'gt_bboxes_3d', 'gt_labels_3d'])
 ]
 
 train_dataloader = dict(
@@ -124,6 +135,9 @@ val_dataloader = dict(
 
 train_cfg = dict(val_interval=20)
 
-default_hooks = dict(
-    visualization=dict(draw_gt=True, draw_pred=False)
-)
+vis_backends=[dict(type='LocalVisBackend'),
+                dict(type='TensorboardVisBackend'),
+                dict(type='WandbVisBackend',
+                     init_kwargs=dict(project="centerpoint_cadc"),)]
+visualizer=dict(
+    type='Det3DLocalVisualizer', vis_backends=vis_backends, name='visualizer')

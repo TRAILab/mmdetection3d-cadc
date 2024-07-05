@@ -7,13 +7,13 @@ point_cloud_range = [-50, -50, -5, 50, 50, 3]
 # For nuScenes we usually do 10-class detection
 class_names = [
     'Car', 
-    'Pedestrian', 
     'Truck', 
-    'Bus', 
-    'Garbage_Containers_on_Wheels', 
+    'Bus',  
     'Traffic_Guidance_Objects',
     'Bicycle',
+    'Pedestrian', 
     'Pedestrian_With_Object', 
+    'Garbage_Containers_on_Wheels', 
     # 'Horse_and_Buggy',
     # 'Animals'
 ]
