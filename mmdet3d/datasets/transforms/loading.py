@@ -334,6 +334,7 @@ class LoadPointsFromMultiSweeps(BaseTransform):
     def __init__(self,
                  sweeps_num: int = 10,
                  load_dim: int = 5,
+                 pad_dim: int = 0,
                  use_dim: List[int] = [0, 1, 2, 4],
                  backend_args: Optional[dict] = None,
                  pad_empty_sweeps: bool = False,
@@ -343,8 +344,11 @@ class LoadPointsFromMultiSweeps(BaseTransform):
         self.sweeps_num = sweeps_num
         if isinstance(use_dim, int):
             use_dim = list(range(use_dim))
-        assert max(use_dim) < load_dim, \
+        assert max(use_dim) < load_dim + pad_dim, \
             f'Expect all used dimensions < {load_dim}, got {use_dim}'
+        assert max(use_dim) >= 4, \
+            f'Expect to use at least 5 dimensions, but got {use_dim}'
+        self.pad_dim = pad_dim
         self.use_dim = use_dim
         self.backend_args = backend_args
         self.pad_empty_sweeps = pad_empty_sweeps
@@ -411,6 +415,7 @@ class LoadPointsFromMultiSweeps(BaseTransform):
         """
         points = results['points']
         points.tensor[:, 4] = 0
+        points = points[:, self.use_dim]
         sweep_points_list = [points]
         ts = results['timestamp']
         if 'lidar_sweeps' not in results:
@@ -440,15 +445,21 @@ class LoadPointsFromMultiSweeps(BaseTransform):
                 # bc-breaking: Timestamp has divided 1e6 in pkl infos.
                 sweep_ts = sweep['timestamp']
                 lidar2sensor = np.array(sweep['lidar_points']['lidar2sensor'])
+                # rotate
                 points_sweep[:, :
                              3] = points_sweep[:, :3] @ lidar2sensor[:3, :3]
-                points_sweep[:, :3] -= lidar2sensor[:3, 3]
+                # translate
+                points_sweep[:, :3] -= lidar2sensor[:3, :3].T @ lidar2sensor[:3, 3]
+                if self.pad_dim > 0:
+                    padding = np.zeros((*points_sweep.shape[:-1], self.pad_dim))
+                points_sweep = np.concatenate([points_sweep, padding], axis=-1)
+                points_sweep = points_sweep[:, self.use_dim]
                 points_sweep[:, 4] = ts - sweep_ts
                 points_sweep = points.new_point(points_sweep)
                 sweep_points_list.append(points_sweep)
 
         points = points.cat(sweep_points_list)
-        points = points[:, self.use_dim]
+        # points = points[:, self.use_dim]
         results['points'] = points
         return results
 
@@ -534,11 +545,11 @@ class NormalizePointsColor(BaseTransform):
         """
         points = input_dict['points']
         assert points.attribute_dims is not None and \
-               'color' in points.attribute_dims.keys(), \
-               'Expect points have color attribute'
+            'color' in points.attribute_dims.keys(), \
+            'Expect points have color attribute'
         if self.color_mean is not None:
             points.color = points.color - \
-                           points.color.new_tensor(self.color_mean)
+                points.color.new_tensor(self.color_mean)
         points.color = points.color / 255.0
         input_dict['points'] = points
         return input_dict
@@ -588,6 +599,7 @@ class LoadPointsFromFile(BaseTransform):
     def __init__(self,
                  coord_type: str,
                  load_dim: int = 6,
+                 pad_dim: int = 0,
                  use_dim: Union[int, List[int]] = [0, 1, 2],
                  shift_height: bool = False,
                  use_color: bool = False,
@@ -598,12 +610,13 @@ class LoadPointsFromFile(BaseTransform):
         self.use_color = use_color
         if isinstance(use_dim, int):
             use_dim = list(range(use_dim))
-        assert max(use_dim) < load_dim, \
+        assert max(use_dim) < load_dim + pad_dim, \
             f'Expect all used dimensions < {load_dim}, got {use_dim}'
         assert coord_type in ['CAMERA', 'LIDAR', 'DEPTH']
 
         self.coord_type = coord_type
         self.load_dim = load_dim
+        self.pad_dim = pad_dim
         self.use_dim = use_dim
         self.norm_intensity = norm_intensity
         self.norm_elongation = norm_elongation
@@ -645,6 +658,9 @@ class LoadPointsFromFile(BaseTransform):
         pts_file_path = results['lidar_points']['lidar_path']
         points = self._load_points(pts_file_path)
         points = points.reshape(-1, self.load_dim)
+        if self.pad_dim > 0:
+            padding = np.zeros((*points.shape[:-1], self.pad_dim))
+            points = np.concatenate([points, padding], axis=-1)
         points = points[:, self.use_dim]
         if self.norm_intensity:
             assert len(self.use_dim) >= 4, \

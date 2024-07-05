@@ -18,6 +18,7 @@ class_names = [
     # 'Animals'
 ]
 metainfo = dict(classes=class_names)
+data_prefix = dict(pts='', img='', sweeps='')
 dataset_type = 'CADCDataset'
 data_root = 'data/cadcd/'
 # Input modality for nuScenes dataset, this is consistent with the submission
@@ -43,11 +44,15 @@ train_pipeline = [
         type='LoadPointsFromFile',
         coord_type='LIDAR',
         load_dim=4,
-        use_dim=4,
+        pad_dim=1,
+        use_dim=5,
         backend_args=backend_args),
     dict(
         type='LoadPointsFromMultiSweeps',
-        sweeps_num=10,
+        sweeps_num=2,
+        load_dim=4,
+        pad_dim=1,
+        use_dim=5,
         backend_args=backend_args),
     dict(type='LoadAnnotations3D', with_bbox_3d=True, with_label_3d=True),
     dict(
@@ -69,7 +74,16 @@ test_pipeline = [
         type='LoadPointsFromFile',
         coord_type='LIDAR',
         load_dim=4,
-        use_dim=4,
+        pad_dim=1,
+        use_dim=5,
+        backend_args=backend_args),
+    dict(
+        type='LoadPointsFromMultiSweeps',
+        sweeps_num=2,
+        load_dim=4,
+        pad_dim=1,
+        use_dim=5,
+        test_mode=True,
         backend_args=backend_args),
     dict(type='LoadAnnotations3D', with_bbox_3d=True, with_label_3d=True),
     dict(type='ObjectNameFilter', classes=class_names),
@@ -82,7 +96,16 @@ eval_pipeline = [
         type='LoadPointsFromFile',
         coord_type='LIDAR',
         load_dim=4,
-        use_dim=4,
+        pad_dim=1,
+        use_dim=5,
+        backend_args=backend_args),
+    dict(
+        type='LoadPointsFromMultiSweeps',
+        sweeps_num=2,
+        load_dim=4,
+        pad_dim=1,
+        use_dim=5,
+        test_mode=True,
         backend_args=backend_args),
     dict(type='Pack3DDetInputs', keys=['points'])
 ]
@@ -97,6 +120,7 @@ train_dataloader = dict(
         ann_file='cadc_train_infos_v2.pkl',
         pipeline=train_pipeline,
         metainfo=metainfo,
+        data_prefix=data_prefix,
         modality=input_modality,
         with_velocity=True,
         test_mode=False,
@@ -116,6 +140,7 @@ test_dataloader = dict(
         ann_file='cadc_val_infos_v2.pkl',
         pipeline=test_pipeline,
         metainfo=metainfo,
+        data_prefix=data_prefix,
         modality=input_modality,
         with_velocity=True,
         test_mode=False,
@@ -133,6 +158,7 @@ val_dataloader = dict(
         ann_file='cadc_val_infos_v2.pkl',
         pipeline=test_pipeline,
         metainfo=metainfo,
+        data_prefix=data_prefix,
         modality=input_modality,
         with_velocity=True,
         test_mode=False,

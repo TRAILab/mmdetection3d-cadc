@@ -9,7 +9,7 @@ import utm
 import yaml
 from dataset_converters.update_infos_to_v2 import (
     clear_instance_unused_keys, get_empty_instance,
-    get_empty_standard_data_info)
+    get_empty_standard_data_info, get_single_lidar_sweep)
 
 CAMERA_TYPES = [
     'camera_F',
@@ -45,7 +45,7 @@ CAMERA_TYPES = [
 # ['2019_02_27', '0004'] # gt appears to have some rotational offset
 
 
-def cadc_converter(root_path, trainval_json: str, info_prefix, out_dir):
+def cadc_converter(root_path, trainval_json: str, info_prefix, out_dir, max_sweeps: int = 10):
     # TODO support camera data, currently only support lidar data
     # read trainval json
     with open(trainval_json, 'r') as f:
@@ -78,6 +78,9 @@ def cadc_converter(root_path, trainval_json: str, info_prefix, out_dir):
                 with open(calib_file_path, 'r') as f:
                     calib_dict[f"intrinsics_{calib_file.split('.')[0]}"] = yaml.safe_load(
                         f)
+        T_lidar_imu = np.array(
+            calib_dict['extrinsics']['T_LIDAR_GPSIMU'])
+        T_imu_lidar = np.linalg.inv(T_lidar_imu)
         # iterate through each clip in the date
         for seq in os.listdir(date_path):
             if seq == 'calib':
@@ -102,6 +105,7 @@ def cadc_converter(root_path, trainval_json: str, info_prefix, out_dir):
                 ann['date'] = date
                 ann['seq'] = seq
                 ann['frame_idx'] = i
+                sweeps_list = []
                 # load novatel message
                 novatel_path = os.path.join(
                     seq_path, 'labeled', 'novatel', 'data', str(i).zfill(10)+'.txt')
@@ -117,12 +121,9 @@ def cadc_converter(root_path, trainval_json: str, info_prefix, out_dir):
                     lidar_ts[:-4], "%Y-%m-%d %H:%M:%S.%f")
                 ann['novatel_timestamp'] = datetime.strptime(
                     novatel_ts[:-4], "%Y-%m-%d %H:%M:%S.%f")
-                t_lidar_imu = np.array(
-                    calib_dict['extrinsics']['T_LIDAR_GPSIMU'])
-                t_imu_lidar = np.linalg.inv(t_lidar_imu)
-                t_global_imu = novatel2pose(novatel_data, origin)
-                ann['pose'] = t_global_imu
-                t_global_lidar = np.dot(t_global_imu, t_imu_lidar)
+                T_global_imu = novatel2pose(novatel_data, origin)
+                ann['pose'] = T_global_imu
+                T_global_lidar = np.dot(T_global_imu, T_imu_lidar)
                 # extract velocity from pose info
                 for obj in ann['cuboids']:
                     if obj['uuid'] not in obj_db:
@@ -138,9 +139,33 @@ def cadc_converter(root_path, trainval_json: str, info_prefix, out_dir):
                     pos = [obj['position']['x'], obj['position']
                            ['y'], obj['position']['z']]
                     obj_db[obj['uuid']]['poses'][i] = np.dot(
-                        t_global_lidar[:3, :3], pos) + t_global_lidar[:3, 3]
+                        T_global_lidar[:3, :3], pos) + T_global_lidar[:3, 3]
                     obj_db[obj['uuid']]['visible'][i] = True
                     obj_db[obj['uuid']]['timestamps'][i] = ann['lidar_timestamp']
+                # load multiple sweeps
+                for j in range(1, max_sweeps):
+                    # check if prev sweep exists
+                    if i-j < 0:
+                        break
+                    data_path = os.path.join(
+                        date, seq, 'labeled', 'lidar_points', 'data', str(i-j).zfill(10)+'.bin')
+                    sweep_j = all_infos[-j]
+                    assert sweep_j['date'] == date and sweep_j['seq'] == seq and sweep_j['frame_idx'] == i-j
+                    T_lidar_global = np.linalg.inv(T_global_lidar)
+                    T_global_imu_prev = sweep_j['pose']
+                    # sensor refers to prev sensor location. T_imu_lidar is a static matrix
+                    T_global_sensor = T_global_imu_prev @ T_imu_lidar
+                    T_lidar_sensor = T_lidar_global @ T_global_sensor
+                    sweep = {
+                        'data_path': data_path,
+                        'type': 'lidar',
+                        # 'sensor2ego': T_lidar_imu,
+                        # 'ego2global': T_global_imu_prev,
+                        'timestamp': datetime.strptime(lidar_timestamps[i-j][:-4], "%Y-%m-%d %H:%M:%S.%f"),
+                        'sensor2lidar': T_lidar_sensor,
+                    }
+                    sweeps_list.append(sweep)
+                ann['sweeps'] = sweeps_list
                 all_infos.append(ann)
                 if trainval_split[os.path.join(date, seq)] == 'train':
                     train_infos.append(ann)
@@ -171,12 +196,25 @@ def generate_v2_pkl(info_prefix, out_dir, infos, obj_db):
             ori_info_dict['date'], ori_info_dict['seq'])
         temp_data_info['token'] = os.path.join(
             ori_info_dict['date'], ori_info_dict['seq'], str(ori_info_dict['frame_idx']).zfill(10))
-        temp_data_info['timestamp_s'] = ori_info_dict['lidar_timestamp'].timestamp()
+        temp_data_info['timestamp'] = ori_info_dict['lidar_timestamp'].timestamp()
         temp_data_info['ego2global'] = ori_info_dict['pose']
         temp_data_info['lidar_points']['lidar2ego'] = ori_info_dict['calib_dict']['extrinsics']['T_LIDAR_GPSIMU']
         temp_data_info['lidar_points']['lidar_path'] = ori_info_dict['lidar_path']
         temp_data_info['lidar_points']['num_pts_feats'] = 4
-        # gt box infos
+        # load multi-sweeps
+        for ori_sweep in ori_info_dict['sweeps']:
+            temp_lidar_sweep = get_single_lidar_sweep()
+            # temp_lidar_sweep['lidar_points']['lidar2ego'] = ori_sweep['sensor2ego']
+            # temp_lidar_sweep['ego2global'] = ori_sweep['ego2global']
+            temp_lidar_sweep['lidar_points']['lidar2sensor'] = np.linalg.inv(
+                ori_sweep['sensor2lidar'])
+            temp_lidar_sweep['timestamp'] = ori_sweep['timestamp'].timestamp()
+            temp_lidar_sweep['lidar_points']['lidar_path'] = ori_sweep[
+                'data_path']
+            # temp_lidar_sweep['sample_data_token'] = ori_sweep[
+            #     'sample_data_token']
+            # gt box infos
+            temp_data_info['lidar_sweeps'].append(temp_lidar_sweep)
         for _, gt_dict in enumerate(ori_info_dict['cuboids']):
             empty_instance = get_empty_instance()
             # bbox_3d x y z l w h yaw

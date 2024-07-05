@@ -23,7 +23,7 @@ class_names = [
     'Horse_and_Buggy',
     'Animals'
 ]
-data_prefix = dict(pts='samples/LIDAR_TOP', img='', sweeps='sweeps/LIDAR_TOP')
+data_prefix = dict(pts='', img='', sweeps='')
 model = dict(
     data_preprocessor=dict(
         voxel_layer=dict(point_cloud_range=point_cloud_range)),
@@ -42,7 +42,17 @@ train_pipeline = [
         type='LoadPointsFromFile',
         coord_type='LIDAR',
         load_dim=4,
-        use_dim=4,
+        pad_dim=1,
+        use_dim=5,
+        backend_args=backend_args),
+    dict(
+        type='LoadPointsFromMultiSweeps',
+        sweeps_num=2,
+        load_dim=4,
+        pad_dim=1,
+        use_dim=5,
+        pad_empty_sweeps=True,
+        remove_close=True,
         backend_args=backend_args),
     dict(type='LoadAnnotations3D', with_bbox_3d=True, with_label_3d=True),
     dict(
@@ -68,7 +78,17 @@ test_pipeline = [
         type='LoadPointsFromFile',
         coord_type='LIDAR',
         load_dim=4,
-        use_dim=4,
+        pad_dim=1,
+        use_dim=5,
+        backend_args=backend_args),
+    dict(
+        type='LoadPointsFromMultiSweeps',
+        sweeps_num=2,
+        load_dim=4,
+        pad_dim=1,
+        use_dim=5,
+        pad_empty_sweeps=True,
+        remove_close=True,
         backend_args=backend_args),
     dict(type='LoadAnnotations3D', with_bbox_3d=True, with_label_3d=True),
     dict(type='ObjectNameFilter', classes=class_names),
@@ -89,6 +109,7 @@ train_dataloader = dict(
             ann_file='cadc_train_infos_v2.pkl',
             pipeline=train_pipeline,
             metainfo=dict(classes=class_names),
+            data_prefix=data_prefix,
             modality=dict(use_lidar=True, use_camera=False),
             with_velocity=True,
             test_mode=False,

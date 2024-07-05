@@ -1,3 +1,5 @@
+import os
+from os import path as osp
 from typing import Callable, List, Optional, Union
 
 import numpy as np
@@ -147,7 +149,73 @@ class CADCDataset(Det3DDataset):
             gt_velocities = ann_info['velocities']
             nan_mask = np.isnan(gt_velocities[:, 0])
             gt_velocities[nan_mask] = [0.0, 0.0]
-            gt_bboxes_3d = np.concatenate([gt_bboxes_3d, gt_velocities], axis=-1)
+            gt_bboxes_3d = np.concatenate(
+                [gt_bboxes_3d, gt_velocities], axis=-1)
         ann_info['gt_bboxes_3d'] = LiDARInstance3DBoxes(
             gt_bboxes_3d, box_dim=gt_bboxes_3d.shape[-1], origin=(0.5, 0.5, 0.5))
         return ann_info
+
+    def parse_data_info(self, info: dict) -> dict:
+        """Process the raw data info.
+
+        Convert all relative path of needed modality data file to
+        the absolute path. And process the `instances` field to
+        `ann_info` in training stage.
+
+        Args:
+            info (dict): Raw info dict.
+
+        Returns:
+            dict: Has `ann_info` in training stage. And
+            all path has been converted to absolute path.
+        """
+
+        if self.modality['use_lidar']:
+            info['lidar_points']['lidar_path'] = \
+                osp.join(
+                    self.data_prefix.get('pts', ''),
+                    info['lidar_points']['lidar_path'])
+
+            info['num_pts_feats'] = info['lidar_points']['num_pts_feats']
+            info['lidar_path'] = info['lidar_points']['lidar_path']
+            if 'lidar_sweeps' in info:
+                for sweep in info['lidar_sweeps']:
+                    file_suffix = sweep['lidar_points']['lidar_path']
+                    if 'samples' in sweep['lidar_points']['lidar_path']:
+                        sweep['lidar_points']['lidar_path'] = osp.join(
+                            self.data_prefix['pts'], file_suffix)
+                    else:
+                        sweep['lidar_points']['lidar_path'] = osp.join(
+                            self.data_prefix['sweeps'], file_suffix)
+
+        if self.modality['use_camera']:
+            for cam_id, img_info in info['images'].items():
+                if 'img_path' in img_info:
+                    if cam_id in self.data_prefix:
+                        cam_prefix = self.data_prefix[cam_id]
+                    else:
+                        cam_prefix = self.data_prefix.get('img', '')
+                    img_info['img_path'] = osp.join(cam_prefix,
+                                                    img_info['img_path'])
+            if self.default_cam_key is not None:
+                info['img_path'] = info['images'][
+                    self.default_cam_key]['img_path']
+                if 'lidar2cam' in info['images'][self.default_cam_key]:
+                    info['lidar2cam'] = np.array(
+                        info['images'][self.default_cam_key]['lidar2cam'])
+                if 'cam2img' in info['images'][self.default_cam_key]:
+                    info['cam2img'] = np.array(
+                        info['images'][self.default_cam_key]['cam2img'])
+                if 'lidar2img' in info['images'][self.default_cam_key]:
+                    info['lidar2img'] = np.array(
+                        info['images'][self.default_cam_key]['lidar2img'])
+                else:
+                    info['lidar2img'] = info['cam2img'] @ info['lidar2cam']
+
+        if not self.test_mode:
+            # used in training
+            info['ann_info'] = self.parse_ann_info(info)
+        if self.test_mode and self.load_eval_anns:
+            info['eval_ann_info'] = self.parse_ann_info(info)
+
+        return info
