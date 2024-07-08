@@ -110,7 +110,7 @@ eval_pipeline = [
     dict(type='Pack3DDetInputs', keys=['points'])
 ]
 train_dataloader = dict(
-    batch_size=4,
+    batch_size=6,
     num_workers=4,
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
@@ -129,7 +129,7 @@ train_dataloader = dict(
         box_type_3d='LiDAR',
         backend_args=backend_args))
 test_dataloader = dict(
-    batch_size=4,
+    batch_size=6,
     num_workers=4,
     persistent_workers=True,
     drop_last=False,
@@ -147,7 +147,7 @@ test_dataloader = dict(
         box_type_3d='LiDAR',
         backend_args=backend_args))
 val_dataloader = dict(
-    batch_size=4,
+    batch_size=6,
     num_workers=4,
     persistent_workers=True,
     drop_last=False,

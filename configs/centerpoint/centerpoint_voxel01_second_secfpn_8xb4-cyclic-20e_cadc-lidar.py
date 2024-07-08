@@ -108,7 +108,7 @@ test_pipeline = [
 
 train_dataloader = dict(
     _delete_=True,
-    batch_size=4,
+    batch_size=6,
     num_workers=4,
     persistent_workers=True,
     sampler=dict(type='DefaultSampler', shuffle=True),
@@ -133,7 +133,7 @@ test_dataloader = dict(
 val_dataloader = dict(
     dataset=dict(pipeline=test_pipeline, metainfo=dict(classes=class_names)))
 
-train_cfg = dict(val_interval=20)
+train_cfg = dict(val_interval=1)
 
 vis_backends=[dict(type='LocalVisBackend'),
                 dict(type='TensorboardVisBackend'),
