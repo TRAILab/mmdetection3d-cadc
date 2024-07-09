@@ -279,6 +279,8 @@ def cadc_data_prep(root_path, trainval_json: str, info_prefix, out_dir):
         out_dir (str): Output directory of the generated info file.
     """
     cadc.cadc_converter(root_path, trainval_json, info_prefix, out_dir)
+    create_groundtruth_database(
+        'CADCDataset', root_path, info_prefix, f'{info_prefix}_train_infos_v2.pkl')
 
 
 parser = argparse.ArgumentParser(description='Data converter arg parser')

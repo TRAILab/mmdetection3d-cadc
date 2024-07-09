@@ -61,6 +61,8 @@ def cadc_converter(root_path, trainval_json: str, info_prefix, out_dir, max_swee
     obj_db = {}
     # iterate through each date
     for date in os.listdir(root_path):
+        if 'gt_database' in date:
+            continue
         date_path = os.path.join(root_path, date)
         if not os.path.isdir(date_path):
             continue
@@ -84,6 +86,10 @@ def cadc_converter(root_path, trainval_json: str, info_prefix, out_dir, max_swee
         # iterate through each clip in the date
         for seq in os.listdir(date_path):
             if seq == 'calib':
+                continue
+            if os.path.join(date, seq) not in trainval_split:
+                print(
+                    f"{os.path.join(date, seq)} was not found in the trainval_json. Not including in pkls")
                 continue
             seq_path = os.path.join(date_path, seq)
             ann_path = os.path.join(seq_path, '3d_ann.json')
@@ -171,9 +177,6 @@ def cadc_converter(root_path, trainval_json: str, info_prefix, out_dir, max_swee
                     train_infos.append(ann)
                 elif trainval_split[os.path.join(date, seq)] == 'val':
                     val_infos.append(ann)
-                else:
-                    print(
-                        f"{os.path.join(date, seq)} was not found in the trainval_json. Not including in pkls")
     print("Finished processing all dates. Generating velocities")
     # generate velocities in global space
     for obj_uuid, obj_db_single in obj_db.items():

@@ -217,7 +217,30 @@ def create_groundtruth_database(dataset_class_name,
                     with_label_3d=True,
                     backend_args=backend_args)
             ])
-
+    elif dataset_class_name == 'CADCDataset':
+        dataset_cfg.update(
+            data_prefix=dict(
+                pts='', img='', sweeps=''),
+            pipeline=[
+                dict(
+                    type='LoadPointsFromFile',
+                    coord_type='LIDAR',
+                    load_dim=4,
+                    pad_dim=1,
+                    use_dim=5),
+                dict(
+                    type='LoadPointsFromMultiSweeps',
+                    sweeps_num=2,
+                    load_dim=4,
+                    pad_dim=1,
+                    use_dim=5,
+                    pad_empty_sweeps=True,
+                    remove_close=True),
+                dict(
+                    type='LoadAnnotations3D',
+                    with_bbox_3d=True,
+                    with_label_3d=True)
+            ])
     dataset = DATASETS.build(dataset_cfg)
 
     if database_save_path is None:
@@ -396,12 +419,7 @@ class GTDatabaseCreater:
         self.lidar_only = lidar_only
         self.bev_only = bev_only
         self.coors_range = coors_range
-        self.with_mask = with_mask
-        self.num_worker = num_worker
-        self.pipeline = None
-
-    def create_single(self, input_dict):
-        group_counter = 0
+        self.with_mask = with_data_prefix
         single_db_infos = dict()
         example = self.pipeline(input_dict)
         annos = example['ann_info']

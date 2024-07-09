@@ -12,14 +12,14 @@ point_cloud_range = [-51.2, -51.2, -5.0, 51.2, 51.2, 3.0]
 # point_cloud_range = [-51.2, -52, -5.0, 51.2, 50.4, 3.0]
 # For nuScenes we usually do 10-class detection
 class_names = [
-    'Car', 
-    'Truck', 
-    'Bus',  
+    'Car',
+    'Truck',
+    'Bus',
     'Traffic_Guidance_Objects',
     'Bicycle',
-    'Pedestrian', 
-    'Pedestrian_With_Object', 
-    'Garbage_Containers_on_Wheels', 
+    'Pedestrian',
+    'Pedestrian_With_Object',
+    'Garbage_Containers_on_Wheels',
     # 'Horse_and_Buggy',
     # 'Animals'
 ]
@@ -47,6 +47,40 @@ model = dict(
 dataset_type = 'CADCDataset'
 data_root = 'data/cadcd/'
 backend_args = None
+
+db_sampler = dict(
+    data_root=data_root,
+    info_path=data_root + 'cadc_dbinfos_train.pkl',
+    rate=1.0,
+    prepare=dict(
+        filter_by_difficulty=[-1],
+        filter_by_min_points=dict(
+            Car=5,
+            Truck=5,
+            Bus=5,
+            Traffic_Guidance_Objects=5,
+            Bicycle=5,
+            Pedestrian=5,
+            Pedestrian_With_Object=5,
+            Garbage_Containers_on_Wheels=5)),
+    classes=class_names,
+    sample_groups=dict(
+        Car=2,
+        Truck=3,
+        Bus=4,
+        Traffic_Guidance_Objects=2,
+        Bicycle=6,
+        Pedestrian=2,
+        Pedestrian_With_Object=2,
+        Garbage_Containers_on_Wheels=2),
+    points_loader=dict(
+        type='LoadPointsFromFile',
+        coord_type='LIDAR',
+        load_dim=5,
+        use_dim=5,
+        backend_args=backend_args),
+    backend_args=backend_args)
+
 train_pipeline = [
     dict(
         type='LoadPointsFromFile',
@@ -65,6 +99,7 @@ train_pipeline = [
         remove_close=True,
         backend_args=backend_args),
     dict(type='LoadAnnotations3D', with_bbox_3d=True, with_label_3d=True),
+    dict(type='ObjectSample', db_sampler=db_sampler),
     dict(
         type='GlobalRotScaleTrans',
         rot_range=[-0.3925, 0.3925],
@@ -135,9 +170,9 @@ val_dataloader = dict(
 
 train_cfg = dict(val_interval=1)
 
-vis_backends=[dict(type='LocalVisBackend'),
+vis_backends = [dict(type='LocalVisBackend'),
                 dict(type='TensorboardVisBackend'),
                 dict(type='WandbVisBackend',
                      init_kwargs=dict(project="centerpoint_cadc"),)]
-visualizer=dict(
+visualizer = dict(
     type='Det3DLocalVisualizer', vis_backends=vis_backends, name='visualizer')

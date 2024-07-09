@@ -18,13 +18,13 @@ class CADCDataset(Det3DDataset):
     METAINFO = {
         'classes': (
             'Car',
-            'Pedestrian',
             'Truck',
             'Bus',
-            'Garbage_Containers_on_Wheels',
             'Traffic_Guidance_Objects',
             'Bicycle',
+            'Pedestrian',
             'Pedestrian_With_Object',
+            'Garbage_Containers_on_Wheels',
             'Horse_and_Buggy',
             'Animals'
         ),
@@ -38,7 +38,7 @@ class CADCDataset(Det3DDataset):
                  pipeline: List[Union[dict, Callable]] = [],
                  modality: dict = dict(use_lidar=True, use_camera=False),
                  box_type_3d: str = 'LiDAR',
-                 with_velocity: bool = False,
+                 with_velocity: bool = True,
                  filter_empty_gt: bool = True,
                  test_mode: bool = False,
                  load_eval_anns: bool = True,
@@ -83,7 +83,7 @@ class CADCDataset(Det3DDataset):
         else:
             self.label_mapping = {
                 name: i
-                for i in enumerate(self.METAINFO['classes'])
+                for i, name in enumerate(self.METAINFO['classes'])
             }
             self.label_mapping[-1] = -1
 
