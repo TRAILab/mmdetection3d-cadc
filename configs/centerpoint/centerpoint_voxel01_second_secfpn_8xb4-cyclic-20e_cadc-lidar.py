@@ -170,6 +170,11 @@ val_dataloader = dict(
 
 train_cfg = dict(val_interval=1)
 
+default_hooks=dict(
+    logger=dict(interval=500), 
+    checkpoint=dict(interval=20)
+)
+
 vis_backends = [dict(type='LocalVisBackend'),
                 dict(type='TensorboardVisBackend'),
                 dict(type='WandbVisBackend',
