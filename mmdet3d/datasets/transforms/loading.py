@@ -452,7 +452,7 @@ class LoadPointsFromMultiSweeps(BaseTransform):
                 points_sweep[:, :3] -= lidar2sensor[:3, :3].T @ lidar2sensor[:3, 3]
                 if self.pad_dim > 0:
                     padding = np.zeros((*points_sweep.shape[:-1], self.pad_dim))
-                points_sweep = np.concatenate([points_sweep, padding], axis=-1)
+                    points_sweep = np.concatenate([points_sweep, padding], axis=-1)
                 points_sweep = points_sweep[:, self.use_dim]
                 points_sweep[:, 4] = ts - sweep_ts
                 points_sweep = points.new_point(points_sweep)

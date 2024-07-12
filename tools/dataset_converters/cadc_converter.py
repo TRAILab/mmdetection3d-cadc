@@ -323,6 +323,7 @@ def box_velocity(obj_db_single, max_time_diff: float = 1.5) -> np.ndarray:
     # only a single annotation, cannot compute velocity
     if obj_db_single['visible'].sum() == 1:
         return ret
+    currs = np.where(obj_db_single['visible'])[0]
     prevs = np.where(obj_db_single['visible'])[0][:-1]
     # first element has no prev, so it is its own prev
     prevs = np.insert(prevs, 0, prevs[0])
@@ -330,16 +331,16 @@ def box_velocity(obj_db_single, max_time_diff: float = 1.5) -> np.ndarray:
     # last element has no next, so it is its own next
     nexts = np.append(nexts, nexts[-1])
     max_time_diff_td = timedelta(seconds=max_time_diff)
-    for i, (prev, next) in enumerate(zip(prevs, nexts)):
+    for i, (prev, curr, next) in enumerate(zip(prevs, currs, nexts)):
         if not obj_db_single['visible'][i]:
             continue
         ts_next = obj_db_single['timestamps'][next]
         ts_prev = obj_db_single['timestamps'][prev]
         ts_curr = obj_db_single['timestamps'][i]
         if ts_next - ts_curr > max_time_diff_td:
-            next = i
+            next = curr
         if ts_curr - ts_prev > max_time_diff_td:
-            prev = i
+            prev = curr
         if next == prev:
             continue
 

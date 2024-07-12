@@ -27,8 +27,6 @@ data_prefix = dict(pts='', img='', sweeps='')
 model = dict(
     data_preprocessor=dict(
         voxel_layer=dict(point_cloud_range=point_cloud_range)),
-    pts_voxel_encoder=dict(num_features=4),
-    pts_middle_encoder=dict(in_channels=4),
     pts_bbox_head=dict(
         bbox_coder=dict(pc_range=point_cloud_range[:2]),
         tasks=[
@@ -172,12 +170,28 @@ train_cfg = dict(val_interval=1)
 
 default_hooks=dict(
     logger=dict(interval=500), 
-    checkpoint=dict(interval=20)
+    checkpoint=dict(interval=10),
+    visualization=dict(
+        draw_gt=False,
+        draw_pred=True
+    )
 )
 
 vis_backends = [dict(type='LocalVisBackend'),
                 dict(type='TensorboardVisBackend'),
                 dict(type='WandbVisBackend',
-                     init_kwargs=dict(project="centerpoint_cadc"),)]
+                     init_kwargs=dict(project="centerpoint_cadc"),)
+                ]
 visualizer = dict(
     type='Det3DLocalVisualizer', vis_backends=vis_backends, name='visualizer')
+
+load_from='ckpts/centerpoint_01voxel_second_secfpn_dcn_circlenms_4x8_cyclic_20e_nus_20220810_052355-a6928835.pth'
+# load_from = 'work-dir/centerpoint_cadc/2024-07-10/epoch_20.pth'
+optim_wrapper = dict(
+    paramwise_cfg=dict(custom_keys=dict(
+        pts_voxel_encoder=dict(lr_mult=0.1),
+        pts_middle_encoder=dict(lr_mult=0.1),
+        pts_backbone=dict(lr_mult=0.1),
+        pts_neck=dict(lr_mult=0.1),
+        ))
+)

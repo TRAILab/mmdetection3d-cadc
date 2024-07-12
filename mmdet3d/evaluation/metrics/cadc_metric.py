@@ -517,6 +517,7 @@ def load_gt(gt_infos, box_cls, verbose: bool = False, logger: Optional[MMLogger]
                 size=[instance['bbox_3d'][i] for i in [4, 3, 5]],
                 orientation=pyquaternion.Quaternion(
                     axis=[0, 0, 1], radians=instance['bbox_3d'][6]),
+                velocity=(instance['velocity'][0], instance['velocity'][1], 0)
             )
             # convert gt info from lidar frame to global frame
             nus_box.rotate(lidar2ego_quat)
@@ -534,6 +535,7 @@ def load_gt(gt_infos, box_cls, verbose: bool = False, logger: Optional[MMLogger]
                         translation=nus_box.center.tolist(),
                         size=nus_box.wlh.tolist(),
                         rotation=nus_box.orientation.elements.tolist(),
+                        velocity=nus_box.velocity[:2],
                         ego_translation=instance['bbox_3d'][0:3],
                         num_pts=instance['num_lidar_pts'],
                         detection_name=detection_name,
